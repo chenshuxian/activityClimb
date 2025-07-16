@@ -1,8 +1,8 @@
 import json
-import math
 import sys
 from urllib.request import urlopen
 from urllib.parse import urlencode
+import ssl
 
 
 def fetch_daily_data(date):
@@ -13,7 +13,8 @@ def fetch_daily_data(date):
         'type': 'ALL'
     }
     url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?{urlencode(params)}"
-    with urlopen(url) as resp:
+    ctx = ssl._create_unverified_context()
+    with urlopen(url, context=ctx) as resp:
         return json.load(resp)
 
 
