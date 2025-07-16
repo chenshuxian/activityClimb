@@ -19,28 +19,38 @@ def fetch_daily_data(date):
 
 
 def parse_stock_rows(data):
-    """Return list of stock rows with required fields."""
-    stock_key = None
-    for key in data:
-        if key.startswith('data') and isinstance(data[key], list):
-            fields_key = 'fields' + key[4:] if 'fields' + key[4:] in data else 'fields'
-            fields = data.get(fields_key)
-            if fields and '開盤價' in fields and '收盤價' in fields:
-                stock_key = key
-                break
-    if not stock_key:
-        raise ValueError('Stock data not found in response.')
-    fields_key = 'fields' + stock_key[4:] if 'fields' + stock_key[4:] in data else 'fields'
-    fields = data[fields_key]
-    open_idx = fields.index('開盤價')
-    close_idx = fields.index('收盤價')
-    volume_idx = fields.index('成交股數')
-    return data[stock_key], open_idx, close_idx, volume_idx
+    """Return stock rows and field indexes from TWSE data.
+
+    The MI_INDEX endpoint contains multiple numbered datasets (``data1``,
+    ``data2`` ...). The section with daily stock prices includes the
+    ``開盤價`` (open) and ``收盤價`` (close) fields.  To be resilient against
+    changes in numbering, scan all ``data`` sections and select the one that
+    contains the required fields.
+    """
+
+    for key in sorted(k for k in data if k.startswith("data")):
+        rows = data.get(key)
+        if not isinstance(rows, list):
+            continue
+        fields_key = "fields" + key[4:] if "fields" + key[4:] in data else "fields"
+        fields = data.get(fields_key)
+        if not fields:
+            continue
+        required = {"開盤價", "收盤價", "成交股數"}
+        if required.issubset(fields):
+            open_idx = fields.index("開盤價")
+            close_idx = fields.index("收盤價")
+            volume_idx = fields.index("成交股數")
+            code_idx = fields.index("證券代號") if "證券代號" in fields else 0
+            name_idx = fields.index("證券名稱") if "證券名稱" in fields else 1
+            return rows, code_idx, name_idx, open_idx, close_idx, volume_idx
+
+    raise ValueError("Stock data not found in response.")
 
 
 def filter_high_open_low_close(date):
     data = fetch_daily_data(date)
-    rows, open_idx, close_idx, volume_idx = parse_stock_rows(data)
+    rows, code_idx, name_idx, open_idx, close_idx, volume_idx = parse_stock_rows(data)
     parsed = []
     volumes = []
     for row in rows:
@@ -51,7 +61,7 @@ def filter_high_open_low_close(date):
         except (ValueError, IndexError):
             continue
         if close_price < open_price:
-            parsed.append((row[0], row[1], open_price, close_price, volume))
+            parsed.append((row[code_idx], row[name_idx], open_price, close_price, volume))
             volumes.append(volume)
     if not parsed:
         return []
